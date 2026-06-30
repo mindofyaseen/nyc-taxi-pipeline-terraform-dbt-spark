@@ -1,59 +1,31 @@
 # NYC Taxi Data Pipeline — AWS + Snowflake
 
-End-to-end data engineering project built as part of the [Data Engineering Zoomcamp](https://github.com/DataTalksClub/data-engineering-zoomcamp).
+End-to-end data engineering pipeline for NYC Yellow & Green taxi trip data using modern cloud tools.
 
-> **Stack:** AWS S3 · Snowflake · dbt · Apache Spark · Terraform
-
----
-
-## What This Project Does
-
-Builds a complete data pipeline for NYC Yellow and Green taxi trip data:
-
-1. **Ingestion** — Downloads CSV files from GitHub, converts to Parquet, uploads to S3
-2. **Warehousing** — Loads Parquet from S3 into Snowflake (58.5M rows)
-3. **Transformation** — dbt models clean and aggregate the data
-4. **Batch Processing** — Spark reads from S3, computes monthly revenue by zone, writes results back to S3
+> **Stack:** AWS S3 · Snowflake · dbt · Apache Spark · Terraform · Python
 
 ---
 
 ## Architecture
 
-```
-NYC Taxi CSVs (GitHub)
-        │
-        ▼  Python (pandas + boto3)
-AWS S3  ──────────────────────────────────────────┐
-dezoomcamp-data-lake-ym/                          │
-├── green/   (24 files, 7.8M rows)                │ Spark S3A
-├── yellow/  (7 files, 50.8M rows)                │
-└── reports/ (aggregated output)  ◄───────────────┘
-        │
-        │  COPY INTO
-        ▼
-Snowflake (DEZOOMCAMP.NYTAXI)
-├── green_tripdata
-└── yellow_tripdata
-        │
-        │  dbt-snowflake
-        ▼
-dbt Models (DEZOOMCAMP.dbt_yaseen)
-├── stg_green_tripdata
-├── stg_yellow_tripdata
-├── fact_trips
-├── dim_zones
-└── fct_monthly_zone_revenue
-```
+![Architecture Diagram](docs/architecture.png)
 
-See [docs/architecture.md](docs/architecture.md) for the full diagram.
+---
+
+## What This Project Does
+
+1. **Ingestion** — Downloads NYC taxi CSV files, converts to Parquet, uploads to AWS S3
+2. **Warehousing** — Loads Parquet from S3 into Snowflake via COPY INTO (58.5M rows)
+3. **Transformation** — dbt models clean, join, and aggregate the data in Snowflake
+4. **Batch Processing** — Spark reads from S3, computes monthly revenue by zone, writes results back to S3
 
 ---
 
 ## Project Structure
 
 ```
-dezoomcamp-aws-snowflake/
-├── terraform/              # IaC — provisions S3 + Snowflake
+nyc-taxi-pipeline-terraform-dbt-spark/
+├── terraform/              # Infrastructure as Code — S3 + Snowflake
 │   ├── main.tf
 │   └── variables.tf
 ├── dbt/                    # Analytics engineering
@@ -62,13 +34,14 @@ dezoomcamp-aws-snowflake/
 │   ├── seeds/              # taxi_zone_lookup, payment_type_lookup
 │   └── dbt_project.yml
 ├── spark/                  # Batch processing
-│   └── 06_spark_sql_s3.py  # Revenue aggregation via S3A
-├── scripts/                # Data loading
+│   └── 06_spark_sql_s3.py  # S3A revenue aggregation job
+├── scripts/                # Data ingestion
 │   ├── load_to_s3.py       # CSV → Parquet → S3
 │   └── setup_snowflake.py  # S3 → Snowflake COPY INTO
 └── docs/
-    ├── architecture.md     # Full architecture diagram
-    └── setup_guide.md      # Step-by-step setup
+    ├── architecture.png    # Visual architecture diagram
+    ├── architecture.md     # Detailed architecture notes
+    └── setup_guide.md      # Step-by-step setup instructions
 ```
 
 ---
@@ -77,11 +50,11 @@ dezoomcamp-aws-snowflake/
 
 | Component | Result |
 |-----------|--------|
-| S3 files uploaded | 31 Parquet files |
-| Total rows in Snowflake | 58,547,656 |
-| dbt models | 8 / 8 passed |
-| dbt tests | 33 / 33 passed |
-| Spark job | Reads S3 → aggregates → writes S3 |
+| S3 Parquet files | 31 files |
+| Snowflake rows loaded | 58,547,656 |
+| dbt models | 8 / 8 ✅ |
+| dbt tests | 33 / 33 ✅ |
+| Spark job | S3 read → aggregate → S3 write ✅ |
 
 ---
 
@@ -89,25 +62,44 @@ dezoomcamp-aws-snowflake/
 
 | Layer | Technology |
 |-------|-----------|
-| Cloud Storage | AWS S3 (us-east-1) |
-| Data Warehouse | Snowflake (DEZOOMCAMP.NYTAXI) |
-| Infrastructure | Terraform (aws + Snowflake-Labs providers) |
-| Transformation | dbt-snowflake 1.11.6 |
-| Batch Processing | Apache Spark 4.1.1 + hadoop-aws 3.4.2 |
+| Cloud Storage | AWS S3 (`us-east-1`) |
+| Data Warehouse | Snowflake |
+| Infrastructure | Terraform |
+| Transformation | dbt-snowflake |
+| Batch Processing | Apache Spark 4.1.1 + hadoop-aws |
 | Language | Python 3.12 |
+
+---
+
+## Quick Start
+
+```bash
+# 1. Provision infrastructure
+cd terraform && terraform init && terraform apply
+
+# 2. Load data to S3 + Snowflake
+python scripts/load_to_s3.py
+python scripts/setup_snowflake.py
+
+# 3. Run dbt models
+cd dbt && dbt deps && dbt seed && dbt run && dbt test
+
+# 4. Run Spark job
+spark-submit --packages org.apache.hadoop:hadoop-aws:3.4.2,com.amazonaws:aws-java-sdk-bundle:1.12.787 \
+  spark/06_spark_sql_s3.py \
+  --input_green=s3a://your-bucket/green/ \
+  --input_yellow=s3a://your-bucket/yellow/ \
+  --output=s3a://your-bucket/reports/revenue
+```
+
+See [docs/setup_guide.md](docs/setup_guide.md) for full setup instructions.
 
 ---
 
 ## Security
 
-- No credentials hardcoded anywhere
-- Snowflake password: `~/.dezoomcamp_password` (gitignored, outside repo)
-- AWS credentials: `~/.aws/credentials` (AWS CLI standard)
-- dbt profiles: `~/.dbt/profiles.yml` (outside repo)
+- No credentials hardcoded anywhere in the codebase
+- AWS credentials: `~/.aws/credentials` (AWS CLI)
+- Snowflake password: local file outside repo
+- dbt profiles: `~/.dbt/profiles.yml` outside repo
 - Terraform state: gitignored
-
----
-
-## Setup
-
-See [docs/setup_guide.md](docs/setup_guide.md) for full instructions.
