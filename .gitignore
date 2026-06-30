@@ -1,0 +1,36 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+*.password
+credentials.json
+*service-account*.json
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Spark
+derby.log
+metastore_db/
+
+# Data files (too large)
+*.parquet
+*.csv.gz
+
+# OS
+.DS_Store
+Thumbs.db
